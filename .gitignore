@@ -1,0 +1,17 @@
+# private notes
+_private/
+
+# python
+__pycache__/
+*.pyc
+
+# model files
+*.pth
+checkpoints/
+
+# outputs
+predictions/
+
+# env
+venv/
+.env
