@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 
 class VisionEncoder(nn.Module):
@@ -39,16 +40,54 @@ class TextEncoder(nn.Module):
         return x
 
 
+class PathDecoder(nn.Module):
+    def __init__(self, input_dim=320, hidden_dim=256, num_points=10):
+        super().__init__()
+        self.mlp = nn.Sequential(
+            nn.Linear(input_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, num_points * 2),
+        )
+        self.num_points = num_points
+
+    def forward(self, x):
+        x = self.mlp(x)
+        x = x.view(x.size(0), self.num_points, 2)
+        x = torch.sigmoid(x)
+        return x
+
+
+class NeuralNavigator(nn.Module):
+    def __init__(self, vocab_size=10, vision_dim=256, text_dim=64, hidden_dim=256, num_points=10):
+        super().__init__()
+        self.vision_encoder = VisionEncoder(output_dim=vision_dim)
+        self.text_encoder = TextEncoder(vocab_size=vocab_size, output_dim=text_dim)
+        self.decoder = PathDecoder(
+            input_dim=vision_dim + text_dim,
+            hidden_dim=hidden_dim,
+            num_points=num_points
+        )
+
+    def forward(self, image, text):
+        vision_features = self.vision_encoder(image)
+        text_features = self.text_encoder(text)
+        combined = torch.cat([vision_features, text_features], dim=1)
+        path = self.decoder(combined)
+        return path
+
+
 if __name__ == "__main__":
-    vision_enc = VisionEncoder()
-    text_enc = TextEncoder()
+    model = NeuralNavigator()
     
-    dummy_image = torch.randn(4, 3, 128, 128)
-    dummy_text = torch.randint(0, 10, (4, 6))
+    batch_size = 4
+    dummy_image = torch.randn(batch_size, 3, 128, 128)
+    dummy_text = torch.randint(0, 10, (batch_size, 6))
     
-    vision_out = vision_enc(dummy_image)
-    text_out = text_enc(dummy_text)
+    output = model(dummy_image, dummy_text)
+    print(f"Model output shape: {output.shape}")
+    print(f"Output range: [{output.min():.3f}, {output.max():.3f}]")
     
-    print(f"Vision encoder output: {vision_out.shape}")
-    print(f"Text encoder output: {text_out.shape}")
-    print(f"Combined would be: {vision_out.shape[1] + text_out.shape[1]} dims")
+    total_params = sum(p.numel() for p in model.parameters())
+    print(f"Total parameters: {total_params:,}")
