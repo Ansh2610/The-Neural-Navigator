@@ -81,6 +81,7 @@ def train(
     model = NeuralNavigator(vocab_size=len(vocab)).to(device)
     criterion = nn.MSELoss()
     optimizer = optim.Adam(model.parameters(), lr=lr)
+    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.5)
     
     train_losses = []
     val_losses = []
@@ -116,6 +117,8 @@ def train(
                 "train_loss": train_loss,
                 "val_loss": val_loss,
             }, os.path.join(save_dir, f"checkpoint_epoch_{epoch}.pth"))
+        
+        scheduler.step()
     
     plot_losses(train_losses, val_losses)
     
@@ -132,4 +135,4 @@ def train(
 
 
 if __name__ == "__main__":
-    train(epochs=50, batch_size=32, lr=1e-3)
+    train(epochs=100, batch_size=16, lr=5e-4)

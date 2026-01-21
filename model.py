@@ -8,12 +8,16 @@ class VisionEncoder(nn.Module):
         super().__init__()
         self.conv_layers = nn.Sequential(
             nn.Conv2d(3, 32, kernel_size=3, stride=2, padding=1),
+            nn.BatchNorm2d(32),
             nn.ReLU(),
             nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
+            nn.BatchNorm2d(64),
             nn.ReLU(),
             nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),
+            nn.BatchNorm2d(128),
             nn.ReLU(),
             nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),
+            nn.BatchNorm2d(256),
             nn.ReLU(),
         )
         self.pool = nn.AdaptiveAvgPool2d((1, 1))
@@ -41,14 +45,18 @@ class TextEncoder(nn.Module):
 
 
 class PathDecoder(nn.Module):
-    def __init__(self, input_dim=320, hidden_dim=256, num_points=10):
+    def __init__(self, input_dim=320, hidden_dim=512, num_points=10):
         super().__init__()
         self.mlp = nn.Sequential(
             nn.Linear(input_dim, hidden_dim),
             nn.ReLU(),
+            nn.Dropout(0.1),
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
-            nn.Linear(hidden_dim, num_points * 2),
+            nn.Dropout(0.1),
+            nn.Linear(hidden_dim, 256),
+            nn.ReLU(),
+            nn.Linear(256, num_points * 2),
         )
         self.num_points = num_points
 
@@ -60,7 +68,7 @@ class PathDecoder(nn.Module):
 
 
 class NeuralNavigator(nn.Module):
-    def __init__(self, vocab_size=10, vision_dim=256, text_dim=64, hidden_dim=256, num_points=10):
+    def __init__(self, vocab_size=10, vision_dim=256, text_dim=64, hidden_dim=512, num_points=10):
         super().__init__()
         self.vision_encoder = VisionEncoder(output_dim=vision_dim)
         self.text_encoder = TextEncoder(vocab_size=vocab_size, output_dim=text_dim)
