@@ -1,42 +1,39 @@
 # Neural Navigator
 
-A neural network that learns to navigate through a 2D map. Give it an image with shapes and tell it where to go ("Go to the Red Circle"), and it figures out a path to get there.
+Neural network that takes a 2D map image and a text command ("Go to the Red Circle") and outputs a path to the target.
 
-## The Problem
-
-Input: A 128x128 image with colored shapes + a text command  
-Output: 10 waypoints forming a path from center to the target
-
-## How I Approached It
-
-The model needs to understand both the image (where things are) and the text (what to look for). So I built two separate encoders:
-
-- **Vision encoder**: A CNN that looks at the image and learns to recognize shape positions
-- **Text encoder**: Converts words into numbers the model can work with
-
-These two get combined and fed into a decoder that outputs the path coordinates.
-
-## Why These Choices
-
-**CNN for images** - Standard approach for learning spatial features. 4 layers was enough given the simple images.
-
-**Simple word embeddings** - Since there's only 9 possible commands ("Go to the [color] [shape]"), I didn't need anything fancy. Just mapped each word to a learnable vector.
-
-**Normalized coordinates** - Instead of predicting pixel values (0-128), I normalized everything to 0-1. Makes training more stable.
-
-**MSE loss** - Straightforward choice for coordinate regression. Penalizes predictions that are far from ground truth.
-
-## Running It
+## How to Run
 
 ```
-python train.py      # trains the model
-python predict.py    # generates path predictions on test images
+python train.py      # train the model
+python predict.py    # run predictions on test images
 ```
 
-## Challenges
+## Challenges & Solutions
 
-The model learns the right direction but tends to predict shorter paths than the ground truth. This is a known limitation of MSE loss - predicting "average" values minimizes error even if the path doesn't fully reach the target.
+### What was the hardest part?
 
-## Results
+Getting the paths to actually reach the targets. The model kept predicting coordinates close to the center of the image instead of extending toward the shapes. This happens because MSE loss doesn't care if you're conservative - predicting middle-ish values gives decent error scores even if the path is too short.
 
-Training converges well. The predicted paths point toward the correct targets, though they're more conservative than the training data paths.
+I tried different things: added BatchNorm, tried Dropout, played with learning rates. Eventually switched to a Transformer decoder which helped a bit with learning the sequence of waypoints, but the core issue is really the loss function not being ideal for path prediction.
+
+### A bug I ran into
+
+Early on the model was ignoring the text command completely - paths would go random directions regardless of what shape I told it to find.
+
+Turned out my tokenizer was case-sensitive. The vocabulary had "Red" but the input text was "red" (lowercase). So everything was getting mapped to the padding token.
+
+Debugging steps:
+1. Noticed loss was still decreasing, so model was learning something
+2. Visualized predictions - saw they didn't correlate with text at all
+3. Added print statements in data loader to see actual token values
+4. Found all tokens were 0 (padding)
+5. Fixed by adding `.lower()` when looking up words
+
+Took me like 20 min to find a one-line fix.
+
+### Results
+
+- Best validation MSE: ~0.016
+- Model correctly identifies which shape to go to based on text
+- Paths point in right direction but are shorter than ground truth

@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+import math
 
 
 class VisionEncoder(nn.Module):
@@ -44,35 +44,52 @@ class TextEncoder(nn.Module):
         return x
 
 
-class PathDecoder(nn.Module):
-    def __init__(self, input_dim=320, hidden_dim=512, num_points=10):
+class TransformerPathDecoder(nn.Module):
+    def __init__(self, input_dim=320, hidden_dim=128, num_points=10, num_heads=4, num_layers=2):
         super().__init__()
-        self.mlp = nn.Sequential(
-            nn.Linear(input_dim, hidden_dim),
-            nn.ReLU(),
-            nn.Dropout(0.1),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU(),
-            nn.Dropout(0.1),
-            nn.Linear(hidden_dim, 256),
-            nn.ReLU(),
-            nn.Linear(256, num_points * 2),
-        )
         self.num_points = num_points
+        self.hidden_dim = hidden_dim
+        
+        self.input_proj = nn.Linear(input_dim, hidden_dim)
+        
+        self.position_embed = nn.Embedding(num_points, hidden_dim)
+        
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=hidden_dim,
+            nhead=num_heads,
+            dim_feedforward=hidden_dim * 4,
+            dropout=0.1,
+            batch_first=True
+        )
+        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+        
+        self.output_proj = nn.Linear(hidden_dim, 2)
 
     def forward(self, x):
-        x = self.mlp(x)
-        x = x.view(x.size(0), self.num_points, 2)
-        x = torch.sigmoid(x)
-        return x
+        batch_size = x.size(0)
+        
+        context = self.input_proj(x)
+        
+        positions = torch.arange(self.num_points, device=x.device)
+        pos_embed = self.position_embed(positions)
+        
+        queries = pos_embed.unsqueeze(0).expand(batch_size, -1, -1)
+        queries = queries + context.unsqueeze(1)
+        
+        out = self.transformer(queries)
+        
+        coords = self.output_proj(out)
+        coords = torch.sigmoid(coords)
+        
+        return coords
 
 
 class NeuralNavigator(nn.Module):
-    def __init__(self, vocab_size=10, vision_dim=256, text_dim=64, hidden_dim=512, num_points=10):
+    def __init__(self, vocab_size=10, vision_dim=256, text_dim=64, hidden_dim=128, num_points=10):
         super().__init__()
         self.vision_encoder = VisionEncoder(output_dim=vision_dim)
         self.text_encoder = TextEncoder(vocab_size=vocab_size, output_dim=text_dim)
-        self.decoder = PathDecoder(
+        self.decoder = TransformerPathDecoder(
             input_dim=vision_dim + text_dim,
             hidden_dim=hidden_dim,
             num_points=num_points
